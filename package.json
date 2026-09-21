@@ -1,0 +1,29 @@
+{
+  "name": "kite-passport-eval-runner",
+  "version": "1.0.0",
+  "description": "Independent runner for Kite Passport behavioral evals",
+  "type": "module",
+  "bin": {
+    "kite-passport-eval": "bin/kite-passport-eval.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 --test-coverage-include='src/*.mjs' --test-coverage-include='bin/*.mjs' test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "kite-ai",
+    "passport",
+    "evals",
+    "ai-agents",
+    "x402"
+  ],
+  "author": "songjinzhou",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/songjinzhou/kite-passport-eval-runner.git"
+  }
+}
