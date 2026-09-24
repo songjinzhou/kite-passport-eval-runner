@@ -93,7 +93,7 @@ async function main() {
     process.stdout.write(
       `Evaluated ${report.summary.total} case(s): ${report.summary.passed} passed (${(
         report.summary.passRate * 100
-      ).toFixed(2)}%).\nJSON: ${path.resolve(paths.json)}\nMarkdown: ${path.resolve(paths.markdown)}\n`,
+      ).toFixed(2)}%).\nJSON: ${path.resolve(paths.json)}\nMarkdown: ${path.resolve(paths.markdown)}\nJUnit: ${path.resolve(paths.junit)}\n`,
     );
     if (report.summary.passed !== report.summary.total) process.exitCode = 1;
   } catch (error) {

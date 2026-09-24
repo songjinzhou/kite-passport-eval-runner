@@ -93,6 +93,8 @@ The default `eval-results/` directory contains:
 - `report.json`: environment, configuration, raw transcripts, and
   assertion-level results for automation.
 - `report.md`: compact human review table.
+- `junit.xml`: standard JUnit test suites and cases for CI test reporting,
+  including assertion failures, adapter errors, timeouts, and captured output.
 
 Exit status `0` means every selected case passed. Status `1` means at least one
 case failed, errored, or timed out. Status `2` means the configuration or input

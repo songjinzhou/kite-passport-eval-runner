@@ -222,13 +222,80 @@ function markdown(report) {
   return `${lines.join("\n")}\n`;
 }
 
+function escapeXml(value) {
+  return String(value)
+    .replace(
+      /[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu,
+      "",
+    )
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function junitXml(report) {
+  const failures = report.results.filter(({ status }) => status === "failed");
+  const errors = report.results.filter(({ status }) =>
+    ["error", "timeout"].includes(status),
+  );
+  const duration = (report.durationMs / 1_000).toFixed(3);
+  const cases = report.results.map((result) => {
+    const attributes = `classname="KitePassportEvals" name="Eval ${result.id}" time="${(
+      result.durationMs / 1_000
+    ).toFixed(3)}"`;
+    let outcome = "";
+    if (result.status === "failed") {
+      const missing = result.missingAssertions.join(", ");
+      outcome = `\n    <failure type="assertion" message="${escapeXml(
+        `Missing assertions: ${missing}`,
+      )}">${escapeXml(missing)}</failure>`;
+    } else if (["error", "timeout"].includes(result.status)) {
+      outcome = `\n    <error type="${escapeXml(result.status)}" message="${escapeXml(
+        result.error ?? result.status,
+      )}">${escapeXml(result.stderr || result.error || result.status)}</error>`;
+    }
+    const stdout = result.transcript
+      ? `\n    <system-out>${escapeXml(result.transcript)}</system-out>`
+      : "";
+    const stderr = result.stderr
+      ? `\n    <system-err>${escapeXml(result.stderr)}</system-err>`
+      : "";
+    return `  <testcase ${attributes}>${outcome}${stdout}${stderr}\n  </testcase>`;
+  });
+  const properties = [
+    ["node", report.environment.node],
+    ["platform", report.environment.platform],
+    ["architecture", report.environment.architecture],
+    ["adapter", report.configuration.adapter],
+  ]
+    .map(
+      ([name, value]) =>
+        `    <property name="${escapeXml(name)}" value="${escapeXml(value)}"/>`,
+    )
+    .join("\n");
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<testsuite name="Kite Passport Evals" tests="${report.summary.total}" failures="${failures.length}" errors="${errors.length}" skipped="0" time="${duration}" timestamp="${escapeXml(report.startedAt)}">`,
+    "  <properties>",
+    properties,
+    "  </properties>",
+    ...cases,
+    "</testsuite>",
+    "",
+  ].join("\n");
+}
+
 export async function writeReports(report, outputDirectory) {
   await mkdir(outputDirectory, { recursive: true });
   const json = path.join(outputDirectory, "report.json");
   const markdownPath = path.join(outputDirectory, "report.md");
+  const junit = path.join(outputDirectory, "junit.xml");
   await Promise.all([
     writeFile(json, `${JSON.stringify(report, null, 2)}\n`),
     writeFile(markdownPath, markdown(report)),
+    writeFile(junit, junitXml(report)),
   ]);
-  return { json, markdown: markdownPath };
+  return { json, markdown: markdownPath, junit };
 }
