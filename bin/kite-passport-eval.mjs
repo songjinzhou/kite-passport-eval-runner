@@ -4,7 +4,12 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { loadCases, runSuite, writeReports } from "../src/index.mjs";
+import {
+  compareWithBaseline,
+  loadCases,
+  runSuite,
+  writeReports,
+} from "../src/index.mjs";
 
 const usage = `Usage:
   kite-passport-eval --input <evals.json> --adapter <executable> [options]
@@ -15,6 +20,7 @@ Options:
   --adapter-arg <value>  Adapter argument; repeat as needed
   --case <id>            Run one case; repeat as needed
   --output-dir <path>    Report directory (default: eval-results)
+  --baseline <path>      Compare results with a previous report.json
   --timeout-ms <number>  Per-case timeout (default: 120000)
   --jobs <number>        Concurrent processes (default: 1)
   --help                 Show help
@@ -41,6 +47,7 @@ export function parseArgs(argv) {
     adapterArgs: [],
     caseIds: [],
     outputDirectory: "eval-results",
+    baseline: undefined,
     timeoutMs: 120_000,
     jobs: 1,
   };
@@ -55,6 +62,8 @@ export function parseArgs(argv) {
       options.caseIds.push(positiveInteger(value(argv, index++, option), option));
     } else if (option === "--output-dir") {
       options.outputDirectory = value(argv, index++, option);
+    } else if (option === "--baseline") {
+      options.baseline = value(argv, index++, option);
     } else if (option === "--timeout-ms") {
       options.timeoutMs = positiveInteger(value(argv, index++, option), option);
     } else if (option === "--jobs") {
@@ -89,13 +98,21 @@ async function main() {
     );
     if (missing.length) throw new Error(`unknown eval id(s): ${missing.join(", ")}`);
     const report = await runSuite(cases, options);
+    if (options.baseline) await compareWithBaseline(report, options.baseline);
     const paths = await writeReports(report, options.outputDirectory);
     process.stdout.write(
       `Evaluated ${report.summary.total} case(s): ${report.summary.passed} passed (${(
         report.summary.passRate * 100
       ).toFixed(2)}%).\nJSON: ${path.resolve(paths.json)}\nMarkdown: ${path.resolve(paths.markdown)}\n`,
     );
-    if (report.summary.passed !== report.summary.total) process.exitCode = 1;
+    const gateFailed = options.baseline
+      ? report.results.some(
+          ({ status, comparisonStatus }) =>
+            status !== "passed" &&
+            ["new", "regression"].includes(comparisonStatus),
+        )
+      : report.summary.passed !== report.summary.total;
+    if (gateFailed) process.exitCode = 1;
   } catch (error) {
     process.stderr.write(`Eval runner error: ${error.message}\n`);
     process.exitCode = 2;

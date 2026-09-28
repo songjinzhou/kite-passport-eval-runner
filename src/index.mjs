@@ -199,6 +199,59 @@ export async function runSuite(cases, options) {
   };
 }
 
+export async function compareWithBaseline(report, baselinePath) {
+  let baseline;
+  try {
+    baseline = JSON.parse(await readFile(baselinePath, "utf8"));
+  } catch (error) {
+    throw new Error(`unable to read baseline ${baselinePath}: ${error.message}`, {
+      cause: error,
+    });
+  }
+  if (!baseline || !Array.isArray(baseline.results)) {
+    throw new TypeError("baseline report must contain a results array");
+  }
+  const previous = new Map();
+  for (const result of baseline.results) {
+    if (
+      !result ||
+      !Number.isInteger(result.id) ||
+      !["passed", "failed", "error", "timeout"].includes(result.status) ||
+      previous.has(result.id)
+    ) {
+      throw new TypeError("baseline results must have unique ids and valid statuses");
+    }
+    previous.set(result.id, result.status);
+  }
+
+  const groups = { regressions: [], fixed: [], unchanged: [], new: [] };
+  for (const result of report.results) {
+    const baselineStatus = previous.get(result.id);
+    let comparisonStatus;
+    if (baselineStatus === undefined) {
+      comparisonStatus = "new";
+      groups.new.push(result.id);
+    } else if (baselineStatus === result.status) {
+      comparisonStatus = "unchanged";
+      groups.unchanged.push(result.id);
+    } else if (result.status === "passed") {
+      comparisonStatus = "fixed";
+      groups.fixed.push(result.id);
+    } else {
+      comparisonStatus = "regression";
+      groups.regressions.push(result.id);
+    }
+    result.baselineStatus = baselineStatus ?? null;
+    result.comparisonStatus = comparisonStatus;
+  }
+  report.comparison = {
+    baselinePath,
+    baselineStartedAt: baseline.startedAt ?? null,
+    ...groups,
+  };
+  return report;
+}
+
 function markdown(report) {
   const percent = (report.summary.passRate * 100).toFixed(2);
   const lines = [
@@ -211,6 +264,12 @@ function markdown(report) {
     "| ID | Status | Duration | Missing assertions |",
     "|---:|:---:|---:|---|",
   ];
+  if (report.comparison) {
+    lines.splice(5, 0,
+      `- Baseline: ${report.comparison.baselinePath}`,
+      `- Comparison: ${report.comparison.regressions.length} regression(s), ${report.comparison.fixed.length} fixed, ${report.comparison.unchanged.length} unchanged, ${report.comparison.new.length} new`,
+    );
+  }
   for (const result of report.results) {
     const missing =
       result.missingAssertions.map((value) => value.replaceAll("|", "\\|")).join(", ") ||
