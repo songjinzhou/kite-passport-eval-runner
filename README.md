@@ -68,6 +68,24 @@ node bin/kite-passport-eval.mjs \
 The runner provides `KITE_EVAL_ID` to the adapter for correlation. It does not
 expose `expected_output` or `assertions`, preventing answer-key leakage.
 
+### Compare against a baseline
+
+Save a report from a known run, then write the next run to a different
+directory and compare it with that baseline:
+
+```bash
+node bin/kite-passport-eval.mjs \
+  --input evals.json \
+  --adapter /path/to/agent-adapter \
+  --baseline eval-results/report.json \
+  --output-dir eval-results/current
+```
+
+The JSON report annotates each case as `new`, `regression`, `fixed`, or
+`unchanged`, and the Markdown report summarizes those groups. With a baseline,
+the command exits with status `1` only when a new case or regression fails;
+pre-existing failures remain visible in the report without blocking the gate.
+
 ## Adapter contract
 
 A minimal shell adapter can forward the prompt to any local agent CLI:
@@ -94,9 +112,10 @@ The default `eval-results/` directory contains:
   assertion-level results for automation.
 - `report.md`: compact human review table.
 
-Exit status `0` means every selected case passed. Status `1` means at least one
-case failed, errored, or timed out. Status `2` means the configuration or input
-was invalid.
+Without a baseline, exit status `0` means every selected case passed and `1`
+means at least one failed, errored, or timed out. With a baseline, `1` means a
+new or regressed case failed. Status `2` means the configuration or input was
+invalid.
 
 ## Verification
 
