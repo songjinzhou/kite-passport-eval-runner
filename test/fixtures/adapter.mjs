@@ -10,6 +10,9 @@ switch (process.argv[2]) {
   case "id":
     process.stdout.write(`case-${process.env.KITE_EVAL_ID}`);
     break;
+  case "retry-once":
+    if (process.env.KITE_EVAL_ATTEMPT !== "1") process.stdout.write(prompt);
+    break;
   case "fail":
     process.stderr.write("adapter failed\n");
     process.exitCode = 7;

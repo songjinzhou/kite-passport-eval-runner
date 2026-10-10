@@ -16,6 +16,7 @@ Options:
   --case <id>            Run one case; repeat as needed
   --output-dir <path>    Report directory (default: eval-results)
   --timeout-ms <number>  Per-case timeout (default: 120000)
+  --retries <number>     Retry unsuccessful cases (default: 0)
   --jobs <number>        Concurrent processes (default: 1)
   --help                 Show help
 `;
@@ -42,6 +43,7 @@ export function parseArgs(argv) {
     caseIds: [],
     outputDirectory: "eval-results",
     timeoutMs: 120_000,
+    retries: 0,
     jobs: 1,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -57,6 +59,11 @@ export function parseArgs(argv) {
       options.outputDirectory = value(argv, index++, option);
     } else if (option === "--timeout-ms") {
       options.timeoutMs = positiveInteger(value(argv, index++, option), option);
+    } else if (option === "--retries") {
+      options.retries = Number(value(argv, index++, option));
+      if (!Number.isInteger(options.retries) || options.retries < 0) {
+        throw new Error("--retries must be a non-negative integer");
+      }
     } else if (option === "--jobs") {
       options.jobs = positiveInteger(value(argv, index++, option), option);
     } else throw new Error(`unknown option: ${option}`);

@@ -50,8 +50,15 @@ node bin/kite-passport-eval.mjs \
   --input evals.json \
   --adapter /path/to/agent-adapter \
   --jobs 4 \
-  --timeout-ms 120000
+  --timeout-ms 120000 \
+  --retries 2
 ```
+
+`--retries` reruns an unsuccessful case in a fresh adapter process, up to the
+specified number of extra attempts. It defaults to `0`; the report records each
+attempt's status and output, while the case status reflects the final attempt
+or the first successful attempt. Since adapters may call paid models, retries
+can increase usage and cost.
 
 Pass adapter arguments directly without a shell, or select cases during
 development:
@@ -93,6 +100,8 @@ The default `eval-results/` directory contains:
 - `report.json`: environment, configuration, raw transcripts, and
   assertion-level results for automation.
 - `report.md`: compact human review table.
+- Each JSON case includes its attempt history, and the Markdown table shows the
+  total attempt count and combined duration.
 
 Exit status `0` means every selected case passed. Status `1` means at least one
 case failed, errored, or timed out. Status `2` means the configuration or input
