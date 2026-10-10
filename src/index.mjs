@@ -63,7 +63,7 @@ export function gradeTranscript(evalCase, transcript) {
   };
 }
 
-function execute(evalCase, options) {
+function execute(evalCase, options, attempt) {
   return new Promise((resolve) => {
     const started = performance.now();
     let stdout = "";
@@ -71,7 +71,11 @@ function execute(evalCase, options) {
     let spawnError;
     let timedOut = false;
     const child = spawn(options.adapter, options.adapterArgs ?? [], {
-      env: { ...process.env, KITE_EVAL_ID: String(evalCase.id) },
+      env: {
+        ...process.env,
+        KITE_EVAL_ID: String(evalCase.id),
+        KITE_EVAL_ATTEMPT: String(attempt),
+      },
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -101,13 +105,13 @@ function execute(evalCase, options) {
   });
 }
 
-export async function runCase(evalCase, options) {
+async function runAttempt(evalCase, options, attempt) {
   validateCase(evalCase, 0);
   if (!options.adapter) throw new TypeError("adapter is required");
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1) {
     throw new TypeError("timeoutMs must be a positive integer");
   }
-  const execution = await execute(evalCase, options);
+  const execution = await execute(evalCase, options, attempt);
   const base = {
     id: evalCase.id,
     prompt: evalCase.prompt,
@@ -148,12 +152,57 @@ export async function runCase(evalCase, options) {
   };
 }
 
+export async function runCase(evalCase, options) {
+  const retries = options.retries ?? 0;
+  if (!Number.isInteger(retries) || retries < 0) {
+    throw new TypeError("retries must be a non-negative integer");
+  }
+  const attempts = [];
+  let finalResult;
+  for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
+    const result = await runAttempt(evalCase, options, attempt);
+    finalResult = result;
+    attempts.push({
+      attempt,
+      status: result.status,
+      transcript: result.transcript,
+      stderr: result.stderr,
+      durationMs: result.durationMs,
+      timedOut: result.timedOut,
+      error: result.error ?? null,
+      missingAssertions: result.missingAssertions,
+    });
+    if (result.status === "passed") {
+      return {
+        ...result,
+        durationMs: attempts.reduce((total, item) => total + item.durationMs, 0),
+        attempts,
+        attemptCount: attempt,
+        retriesUsed: attempt - 1,
+      };
+    }
+  }
+  return {
+    ...finalResult,
+    durationMs: attempts.reduce((total, item) => total + item.durationMs, 0),
+    attempts,
+    attemptCount: attempts.length,
+    retriesUsed: attempts.length - 1,
+  };
+}
+
 export async function runSuite(cases, options) {
   if (!Array.isArray(cases) || cases.length === 0) {
     throw new TypeError("at least one eval case is required");
   }
   if (!Number.isInteger(options.jobs) || options.jobs < 1) {
     throw new TypeError("jobs must be a positive integer");
+  }
+  if (
+    options.retries !== undefined &&
+    (!Number.isInteger(options.retries) || options.retries < 0)
+  ) {
+    throw new TypeError("retries must be a non-negative integer");
   }
   const startedAt = new Date();
   const results = new Array(cases.length);
@@ -186,6 +235,7 @@ export async function runSuite(cases, options) {
       adapterArgs: options.adapterArgs ?? [],
       timeoutMs: options.timeoutMs,
       jobs: options.jobs,
+      retries: options.retries ?? 0,
     },
     summary: {
       total: results.length,
@@ -207,16 +257,17 @@ function markdown(report) {
     `- Started: ${report.startedAt}`,
     `- Adapter: \`${report.configuration.adapter}\``,
     `- Result: ${report.summary.passed}/${report.summary.total} (${percent}%)`,
+    `- Retries: ${report.configuration.retries}`,
     "",
-    "| ID | Status | Duration | Missing assertions |",
-    "|---:|:---:|---:|---|",
+    "| ID | Status | Attempts | Duration | Missing assertions |",
+    "|---:|:---:|---:|---:|---|",
   ];
   for (const result of report.results) {
     const missing =
       result.missingAssertions.map((value) => value.replaceAll("|", "\\|")).join(", ") ||
       "—";
     lines.push(
-      `| ${result.id} | ${result.status.toUpperCase()} | ${result.durationMs} ms | ${missing} |`,
+      `| ${result.id} | ${result.status.toUpperCase()} | ${result.attemptCount} | ${result.durationMs} ms | ${missing} |`,
     );
   }
   return `${lines.join("\n")}\n`;

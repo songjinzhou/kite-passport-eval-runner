@@ -147,6 +147,7 @@ test("runs cases concurrently without reordering results", async () => {
       adapter: process.execPath,
       adapterArgs: [adapter, "id"],
       timeoutMs: 1_000,
+      retries: 0,
       jobs: 2,
     },
   );
@@ -159,6 +160,20 @@ test("runs cases concurrently without reordering results", async () => {
     timedOut: 0,
     passRate: 1,
   });
+});
+
+test("retries unsuccessful attempts and retains their audit details", async () => {
+  const result = await runCase(evalCase(), {
+    adapter: process.execPath,
+    adapterArgs: [adapter, "retry-once"],
+    timeoutMs: 1_000,
+    retries: 1,
+  });
+  assert.equal(result.status, "passed");
+  assert.equal(result.attemptCount, 2);
+  assert.equal(result.retriesUsed, 1);
+  assert.deepEqual(result.attempts.map(({ status }) => status), ["failed", "passed"]);
+  assert.equal(result.attempts[0].missingAssertions[0], "alpha");
 });
 
 test("writes JSON and Markdown audit reports", async () => {
@@ -175,6 +190,7 @@ test("writes JSON and Markdown audit reports", async () => {
   assert.equal(json.summary.passed, 1);
   assert.match(markdown, /# Kite Passport Eval Report/);
   assert.match(markdown, /1\/1 \(100\.00%\)/);
+  assert.match(markdown, /\| ID \| Status \| Attempts \| Duration \|/);
 });
 
 test("parses repeatable adapter arguments and case filters", () => {
@@ -193,6 +209,7 @@ test("parses repeatable adapter arguments and case filters", () => {
       caseIds: [4],
       outputDirectory: "eval-results",
       timeoutMs: 120_000,
+      retries: 0,
       jobs: 2,
     },
   );
@@ -207,6 +224,11 @@ test("parses repeatable adapter arguments and case filters", () => {
   assert.throws(
     () => parseArgs(["--input", "x", "--adapter", "x", "--jobs", "0"]),
     /positive integer/,
+  );
+  assert.equal(parseArgs(["--input", "x", "--adapter", "x", "--retries", "2"]).retries, 2);
+  assert.throws(
+    () => parseArgs(["--input", "x", "--adapter", "x", "--retries", "-1"]),
+    /non-negative integer/,
   );
 });
 
